@@ -526,6 +526,33 @@ TMWorkers() {
     fi
 }
 
+# starts or stops TMs on all workers
+# TMWorkers start|stop
+TMWorkersMon() {
+    CMD=$1
+
+    readWorkers
+
+    if [ ${WORKERS_ALL_LOCALHOST} = true ] ; then
+        # all-local setup
+        for worker in ${WORKERS[@]}; do
+            "${FLINK_BIN_DIR}"/taskmanager-mon.sh "${CMD}"
+        done
+    else
+        # non-local setup
+        # start/stop TaskManager instance(s) using pdsh (Parallel Distributed Shell) when available
+        command -v pdsh >/dev/null 2>&1
+        if [[ $? -ne 0 ]]; then
+            for worker in ${WORKERS[@]}; do
+                ssh -n $FLINK_SSH_OPTS $worker -- "nohup /bin/bash -l \"${FLINK_BIN_DIR}/taskmanager-mon.sh\" \"${CMD}\" &"
+            done
+        else
+            PDSH_SSH_ARGS="" PDSH_SSH_ARGS_APPEND=$FLINK_SSH_OPTS pdsh -w $(IFS=, ; echo "${WORKERS[*]}") \
+                "nohup /bin/bash -l \"${FLINK_BIN_DIR}/taskmanager-mon.sh\" \"${CMD}\""
+        fi
+    fi
+}
+
 runBashJavaUtilsCmd() {
     local cmd=$1
     local conf_dir=$2

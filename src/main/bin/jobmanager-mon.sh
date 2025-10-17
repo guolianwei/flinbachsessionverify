@@ -18,7 +18,7 @@
 ################################################################################
 
 # Start/stop a Flink JobManager.
-USAGE="Usage: jobmanager.sh ((start|start-foreground) [args])|stop|stop-all"
+USAGE="Usage: jobmanager-mon.sh ((start-mon|start-foreground) [args])|stop-mon|stop-all"
 
 STARTSTOP=$1
 
@@ -36,7 +36,7 @@ else
     args=("${@:4}")
 fi
 
-if [[ $STARTSTOP != "start" ]] && [[ $STARTSTOP != "start-foreground" ]] && [[ $STARTSTOP != "stop" ]] && [[ $STARTSTOP != "stop-all" ]]; then
+if [[ $STARTSTOP != "start-mon" ]] && [[ $STARTSTOP != "start-foreground" ]] && [[ $STARTSTOP != "stop-mon" ]] && [[ $STARTSTOP != "stop-all" ]]; then
   echo $USAGE
   exit 1
 fi
@@ -48,7 +48,7 @@ bin=`cd "$bin"; pwd`
 
 ENTRYPOINT=standalonesession
 
-if [[ $STARTSTOP == "start" ]] || [[ $STARTSTOP == "start-foreground" ]]; then
+if [[ $STARTSTOP == "start-mon" ]] || [[ $STARTSTOP == "start-foreground" ]]; then
     # Add JobManager-specific JVM options
     export FLINK_ENV_JAVA_OPTS="${FLINK_ENV_JAVA_OPTS} ${FLINK_ENV_JAVA_OPTS_JM}"
     parseJmArgsAndExportLogs "${ARGS[@]}"
@@ -71,8 +71,9 @@ fi
 
 if [[ $STARTSTOP == "start-foreground" ]]; then
     exec "${FLINK_BIN_DIR}"/flink-console.sh $ENTRYPOINT "${args[@]}"
-elif [[ $STARTSTOP == "start-mon" ]]; then
+elif [[ $STARTSTOP == "start-mon" ]] || [[ $STARTSTOP == "stop-mon" ]]; then
+    echo "job managering:"$STARTSTO
     "${FLINK_BIN_DIR}"/flink-daemon-mon.sh $STARTSTOP $ENTRYPOINT "${args[@]}"
 else
-    "${FLINK_BIN_DIR}"/flink-daemon.sh $STARTSTOP $ENTRYPOINT "${args[@]}"
+    "${FLINK_BIN_DIR}"/flink-daemon-mon.sh $STARTSTOP $ENTRYPOINT "${args[@]}"
 fi

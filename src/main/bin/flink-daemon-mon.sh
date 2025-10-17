@@ -18,7 +18,7 @@
 ################################################################################
 
 # Start/stop a Flink daemon.
-USAGE="Usage: flink-daemon.sh (start-mon|stop|stop-all) (taskexecutor|zookeeper|historyserver|standalonesession|standalonejob|sql-gateway) [args]"
+USAGE="Usage: flink-daemon.sh (start-mon|stop-mon|stop-all) (taskexecutor|zookeeper|historyserver|standalonesession|standalonejob|sql-gateway) [args]"
 
 STARTSTOP=$1
 DAEMON=$2
@@ -45,7 +45,7 @@ generate_mon_job_classpath() {
   # 'dirname "$0"' 获取脚本所在的目录
   # 'cd ... && pwd' 切换到该目录并打印工作目录，从而获得绝对路径
   local SCRIPT_DIR
-  SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+  SCRIPT_DIR=$(cd ../../ "$(dirname "$0")" && pwd)
 
   # 计算上两级目录作为 CLOUD_HOME，并导出为环境变量
   # 使用 'export' 使得 CLOUD_HOME 对子进程也可见
@@ -219,7 +219,7 @@ case $STARTSTOP in
         fi
     ;;
 
-    (stop)
+    (stop-mon)
         if [ -f "$pid" ]; then
             # Remove last in pid file
             to_stop=$(tail -n 1 "$pid")

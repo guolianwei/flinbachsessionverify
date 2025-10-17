@@ -22,33 +22,26 @@ bin=`cd "$bin"; pwd`
 
 . "$bin"/config.sh
 
-# Start the JobManager instance(s)
+# Stop TaskManager instance(s)
+TMWorkers stop
+
+# Stop JobManager instance(s)
 shopt -s nocasematch
 if [[ $HIGH_AVAILABILITY == "zookeeper" ]]; then
     # HA Mode
     readMasters
 
-    echo "Starting HA cluster with ${#MASTERS[@]} masters."
-
-    for ((i=0;i<${#MASTERS[@]};++i)); do
-        master=${MASTERS[i]}
-        webuiport=${WEBUIPORTS[i]}
-
-        if [ ${MASTERS_ALL_LOCALHOST} = true ] ; then
-            "${FLINK_BIN_DIR}"/jobmanager.sh start "${master}" "${webuiport}"
-        else
-            ssh -n $FLINK_SSH_OPTS $master -- "nohup /bin/bash -l \"${FLINK_BIN_DIR}/jobmanager-mon.sh\" start-mon ${master} ${webuiport} &"
-        fi
-    done
+    if [ ${MASTERS_ALL_LOCALHOST} = true ] ; then
+        for master in ${MASTERS[@]}; do
+            "$FLINK_BIN_DIR"/jobmanager.sh stop
+        done
+    else
+        for master in ${MASTERS[@]}; do
+            ssh -n $FLINK_SSH_OPTS $master -- "nohup /bin/bash -l \"${FLINK_BIN_DIR}/jobmanager.sh\" stop &"
+        done
+    fi
 
 else
-    echo "Starting cluster."
-
-    # Start single JobManager on this machine
-    "$FLINK_BIN_DIR"/jobmanager-mon.sh start-mon
+    "$FLINK_BIN_DIR"/jobmanager.sh stop
 fi
 shopt -u nocasematch
-
-
-# Start Mon TaskManager instance(s)
-TMWorkersMon start-mon

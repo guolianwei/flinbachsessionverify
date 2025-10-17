@@ -3,7 +3,7 @@
 # 自动获取 Flink 安装路径
 # Get Flink installation path automatically
 FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
-export FLINK_CONF_DIR=$FLINK_HOME/light_weight_conf
+export FLINK_CONF_DIR=$FLINK_HOME/meritdata_mon_light_weight_conf
 CONF_FILE="$FLINK_CONF_DIR/flink-conf.yaml"
 
 # 创建任务运行日志目录
@@ -158,7 +158,7 @@ while true; do
             echo "---"
             echo "正在停止 Flink 集群..."
             echo "Stopping Flink cluster..."
-            $FLINK_HOME/bin/stop-cluster.sh
+            $FLINK_HOME/bin/stop-cluster-mon.sh
             echo "服务已停止 (Service stopped)"
             ;;
         4)
