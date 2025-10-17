@@ -19,15 +19,15 @@ public class FlinkRestApiDFClient {
             Thread.sleep(2000);
             // 2. 提交任务
            submitJob(jarId, ENTRY_CLASS,
-                   "--flow.batch 1 --flow.id ff80808199e1c0e20199ec2b797a0002  --redis.password" +
-                           "1051EB52F765A77FAB5BE5C3F7C63FC6F4CD17000315515384FFD51D7BAACD0D --insight.size 10" +
-                           "--content.key dw:task:develop:run:content:ff80808199e1c0e20199ec2b797a0002_1" +
-                           "--redis.mode standalone" +
-                           "--jar.url http://191.168.1.242:8080/gateway/tempo-dw-design" +
-                           "--run.env develop" +
-                           "--flow.type stream" +
+                   "--flow.batch 1 --flow.id ff80808199e1c0e20199ec2b797a0002  --redis.password " +
+                           "1051EB52F765A77FAB5BE5C3F7C63FC6F4CD17000315515384FFD51D7BAACD0D --insight.size 10 " +
+                           "--content.key dw:task:develop:run:content:ff80808199e1c0e20199ec2b797a0002_1 " +
+                           "--redis.mode standalone " +
+                           "--jar.url http://191.168.1.242:8080/gateway/tempo-dw-design " +
+                           "--run.env develop " +
+                           "--flow.type stream " +
                            "--redis.addresses " +
-                           "F1A206BD0C7B5F4D70793F1049F8EC012EA3E91E2C920EDAA0258E6860D6DEEAD3B46EE4B50F2A21" +
+                           "F1A206BD0C7B5F4D70793F1049F8EC012EA3E91E2C920EDAA0258E6860D6DEEAD3B46EE4B50F2A21 " +
                            "--redis.master --insight.data.length 0");
         } catch (Exception e) {
             e.printStackTrace();
