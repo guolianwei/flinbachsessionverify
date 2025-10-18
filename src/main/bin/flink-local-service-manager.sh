@@ -12,7 +12,120 @@ LOGS_DIR="$FLINK_HOME/logs"
 mkdir -p "$LOGS_DIR"
 echo "任务日志目录 (Log directory): $LOGS_DIR"
 echo "=================================================="
+#
+# @description: 检查 Flink (JM/TM) 进程是否已成功启动
+#
+# 该函数会等待10秒 (带倒计时)，然后检查包含
+# "meritdata_mon_light_weight_conf" 标记的
+# StandaloneSessionClusterEntrypoint (JobManager) 和
+# TaskManagerRunner (TaskManager) Java 进程。
+#
+# 此版本使用 'ps -fww' 来防止命令行被截断。
+#
+check_flink_startup_status() {
+  # --- 1. 定义常量 ---
+  local a_flag="meritdata_mon_light_weight_conf"
+  local jobmanager_class="org.apache.flink.runtime.entrypoint.StandaloneSessionClusterEntrypoint"
+  local taskmanager_class="org.apache.flink.runtime.taskexecutor.TaskManagerRunner"
+  local countdown_seconds=10
 
+  echo "将在 ${countdown_seconds} 秒后开始检查进程状态..."
+
+  # --- 2. 执行倒计时 ---
+  for i in $(seq ${countdown_seconds} -1 1); do
+    echo -n "请等待 ${i} 秒...  "
+    echo -n -e "\r"
+    sleep 1
+  done
+  echo "检查开始...                                "
+
+
+  # --- 3. 查找进程 (分两步) ---
+
+  # 步骤 3.1: 使用 pgrep -f 查找所有匹配 flag 的 java 进程的 PID
+  # -f: 匹配完整命令行
+  # "java.*${a_flag}": 查找以 "java" 开头并包含 flag 的进程
+  local pids
+  pids=$(pgrep -f "java.*${a_flag}")
+
+  local process_list="" # 初始化为空
+
+  # 步骤 3.2: 仅在找到 PID 的情况下，才使用 ps 检查
+  if [ -n "${pids}" ]; then
+      # 将 pgrep 输出的 (换行符分隔的) PID 列表转换为 (逗号分隔的) 列表
+      # 以便传递给 ps -p
+      local pids_for_ps
+      pids_for_ps=$(echo "${pids}" | tr '\n' ',' | sed 's/,$//') # sed 's/,$//' 删除末尾的逗号
+
+      # 步骤 3.3: 使用 ps -fww -p [PIDs] 获取完整、不截断的命令行
+      # -f: 完整格式 (Full format)
+      # -w -w (or ww): 两次 wide，强制确保不截断
+      # -p: 指定 PID 列表
+      #
+      # 然后使用 grep 过滤 ps 的输出，查找目标类名
+      process_list=$(ps -fww -p "${pids_for_ps}" | grep -E "${jobmanager_class}|${taskmanager_class}")
+  fi
+
+  # --- 4. 检查结果并打印 ---
+  if [ -z "${process_list}" ]; then
+    # 如果 process_list 字符串为空，说明未找到
+    echo "--------------------------------------------------"
+    echo "【启动失败】"
+    echo "错误：未找到标记为 '${a_flag}' 的 Flink JobManager 或 TaskManager 进程。"
+    echo "（pgrep 找到的 PIDs: [${pids:-无}]）"
+    echo "请检查启动日志以获取详细信息。"
+    echo "--------------------------------------------------"
+    return 1 # 返回非零值表示失败
+  else
+    # 找到了进程
+    echo "--------------------------------------------------"
+    echo "【启动成功】"
+    echo "已找到以下 Flink 进程 (完整命令行)："
+    echo ""
+
+    # 打印 ps 的表头，以便阅读 (通过 ps 自身进程来获取表头)
+    ps -fww -p $$ | head -n 1
+
+    # 打印 grep 到的进程列表
+    echo "${process_list}"
+    echo ""
+
+    # 从 ps -f (PID 在第二列) 输出中提取 PIDs
+    local pids_found
+    pids_found=$(echo "${process_list}" | awk '{print $2}' | tr '\n' ' ')
+
+    echo "进程 PIDs: ${pids_found}"
+    echo "--------------------------------------------------"
+    return 0 # 返回 0 表示成功
+  fi
+}
+# 定义函数：显示服务访问地址
+show_service_urls() {
+      # 1. 获取最终的端口号
+      FINAL_PORT=$(get_config "rest.port")
+      FINAL_PORT=${FINAL_PORT:-8081} # 如果未设置，使用默认的8081
+      echo ""
+      echo "服务启动成功! Web UI 可通过以下地址访问:"
+      echo "Service started successfully! Web UI is available at the following addresses:"
+
+      # 2. 打印 localhost 地址
+      echo "  - http://localhost:${FINAL_PORT}"
+
+      # 3. 根据操作系统类型获取本机所有非回环IP地址
+      # Detect OS and get all non-loopback IP addresses
+      if [[ "$(uname)" == "Darwin" ]]; then
+          # macOS
+          IP_LIST=$(ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}')
+      else
+          # Linux
+          IP_LIST=$(ip addr show | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d'/' -f1)
+      fi
+
+      # 4. 循环打印所有IP地址组合的URL
+      for ip in $IP_LIST; do
+          echo "  - http://${ip}:${FINAL_PORT}"
+      done
+}
 #
 # 函数：从 flink-conf.yaml 读取指定的配置项
 # Function: Read a specific configuration value from flink-conf.yaml
@@ -114,37 +227,18 @@ while true; do
             echo "Starting Flink cluster..."
             $FLINK_HOME/bin/start-cluster-mon.sh
 
-            # ##################################################################
-            # ############## 以下是本次修改的核心部分 ############################
-            # ##################################################################
 
-            # --- 构造并打印所有可用的 Web UI 地址 ---
-            # 1. 获取最终的端口号
-            FINAL_PORT=$(get_config "rest.port")
-            FINAL_PORT=${FINAL_PORT:-8081} # 如果未设置，使用默认的8081
-
-            echo ""
-            echo "服务启动成功! Web UI 可通过以下地址访问:"
-            echo "Service started successfully! Web UI is available at the following addresses:"
-
-            # 2. 打印 localhost 地址
-            echo "  - http://localhost:${FINAL_PORT}"
-
-            # 3. 根据操作系统类型获取本机所有非回环IP地址
-            # Detect OS and get all non-loopback IP addresses
-            if [[ "$(uname)" == "Darwin" ]]; then
-                # macOS
-                IP_LIST=$(ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}')
+            check_flink_startup_status
+            # 检查函数返回值
+            if [ $? -eq 0 ]; then
+                # 返回值为0，表示启动成功，调用显示服务地址函数
+                # --- 构造并打印所有可用的 Web UI 地址 ---
+                show_service_urls
             else
-                # Linux
-                IP_LIST=$(ip addr show | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d'/' -f1)
+                # 返回值为非0，表示启动失败，输出错误信息
+                echo ""
+                echo "Flink 服务启动检查失败，请查看上述错误信息并排查问题。"
             fi
-
-            # 4. 循环打印所有IP地址组合的URL
-            for ip in $IP_LIST; do
-                echo "  - http://${ip}:${FINAL_PORT}"
-            done
-            # ##################################################################
 
             ;;
         2)
