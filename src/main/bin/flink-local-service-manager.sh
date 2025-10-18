@@ -12,10 +12,13 @@ LOGS_DIR="$FLINK_HOME/logs"
 mkdir -p "$LOGS_DIR"
 echo "任务日志目录 (Log directory): $LOGS_DIR"
 echo "=================================================="
+
 #
 # @description: 检查 Flink (JM/TM) 进程是否已成功启动
 #
-# 该函数会等待10秒 (带倒计时)，然后检查包含
+# @param $1: (可选) 等待的秒数。默认为 10。
+#
+# 该函数会等待指定秒数 (带倒计时)，然后检查包含
 # "meritdata_mon_light_weight_conf" 标记的
 # StandaloneSessionClusterEntrypoint (JobManager) 和
 # TaskManagerRunner (TaskManager) Java 进程。
@@ -27,11 +30,22 @@ check_flink_startup_status() {
   local a_flag="meritdata_mon_light_weight_conf"
   local jobmanager_class="org.apache.flink.runtime.entrypoint.StandaloneSessionClusterEntrypoint"
   local taskmanager_class="org.apache.flink.runtime.taskexecutor.TaskManagerRunner"
-  local countdown_seconds=10
+
+  # 【修改点】
+  # 使用 ${1:-10} 语法:
+  # 如果 $1 (函数的第一个参数) 存在且不为空，则使用 $1 的值。
+  # 否则 (如果 $1 未传递或为空)，则使用默认值 10。
+  local countdown_seconds=${1:-10}
 
   echo "将在 ${countdown_seconds} 秒后开始检查进程状态..."
 
   # --- 2. 执行倒计时 ---
+  # 增加一个简单的输入验证，防止 $countdown_seconds 为非数字
+  if ! [[ "${countdown_seconds}" =~ ^[0-9]+$ ]]; then
+    echo "错误：提供的倒计时 '${countdown_seconds}' 不是一个有效的数字。将使用默认值 10。" >&2
+    countdown_seconds=10
+  fi
+
   for i in $(seq ${countdown_seconds} -1 1); do
     echo -n "请等待 ${i} 秒...  "
     echo -n -e "\r"
@@ -43,8 +57,6 @@ check_flink_startup_status() {
   # --- 3. 查找进程 (分两步) ---
 
   # 步骤 3.1: 使用 pgrep -f 查找所有匹配 flag 的 java 进程的 PID
-  # -f: 匹配完整命令行
-  # "java.*${a_flag}": 查找以 "java" 开头并包含 flag 的进程
   local pids
   pids=$(pgrep -f "java.*${a_flag}")
 
@@ -52,18 +64,12 @@ check_flink_startup_status() {
 
   # 步骤 3.2: 仅在找到 PID 的情况下，才使用 ps 检查
   if [ -n "${pids}" ]; then
-      # 将 pgrep 输出的 (换行符分隔的) PID 列表转换为 (逗号分隔的) 列表
-      # 以便传递给 ps -p
       local pids_for_ps
       pids_for_ps=$(echo "${pids}" | tr '\n' ',' | sed 's/,$//') # sed 's/,$//' 删除末尾的逗号
 
       # 步骤 3.3: 使用 ps -fww -p [PIDs] 获取完整、不截断的命令行
-      # -f: 完整格式 (Full format)
-      # -w -w (or ww): 两次 wide，强制确保不截断
-      # -p: 指定 PID 列表
-      #
-      # 然后使用 grep 过滤 ps 的输出，查找目标类名
-      process_list=$(ps -fww -p "${pids_for_ps}" | grep -E "${jobmanager_class}|${taskmanager_class}")
+      process_list=$(ps -fww -p "${pids_for_ps}" 2>/dev/null | grep -E "${jobmanager_class}|${taskmanager_class}")
+      # 2>/dev/null 隐藏 ps 可能报出的 "PID 不存在" 的错误 (以防进程在 pgrep 和 ps 之间死掉)
   fi
 
   # --- 4. 检查结果并打印 ---
@@ -83,7 +89,7 @@ check_flink_startup_status() {
     echo "已找到以下 Flink 进程 (完整命令行)："
     echo ""
 
-    # 打印 ps 的表头，以便阅读 (通过 ps 自身进程来获取表头)
+    # 打印 ps 的表头
     ps -fww -p $$ | head -n 1
 
     # 打印 grep 到的进程列表
@@ -172,8 +178,10 @@ while true; do
     echo "--- Flink 本地服务控制台 ---"
     echo "1. 启动 Flink (Start Flink)"
     echo "2. 查看运行中任务 (List Running Jobs)"
-    echo "3. 停止 Flink (Stop Flink)"
-    echo "4. 退出控制台 (Exit)"
+    echo "3. 检查运行中的Flink轻量服务进程(List Running Flink Service Processes)"
+    echo "4. 获得轻量服务访问 Web UI 地址 (Get Flink Service Web UI Addresses)"
+    echo "5. 停止 Flink (Stop Flink)"
+    echo "6. 退出控制台 (Exit)"
     read -p "请输入选项(1-4) (Enter your choice): " choice
 
     case $choice in
@@ -228,7 +236,7 @@ while true; do
             $FLINK_HOME/bin/start-cluster-mon.sh
 
 
-            check_flink_startup_status
+            check_flink_startup_status 10
             # 检查函数返回值
             if [ $? -eq 0 ]; then
                 # 返回值为0，表示启动成功，调用显示服务地址函数
@@ -248,6 +256,16 @@ while true; do
             $FLINK_HOME/bin/flink list -all
             ;;
         3)
+          echo "---"
+          echo "正在检查运行中的Flink 轻量服务进程..."
+          check_flink_startup_status 0
+          ;;
+        4)
+          echo "---"
+          echo "获得轻量服务访问 Web UI 地址..."
+          show_service_urls
+          ;;
+        5)
             # ... (其他选项保持不变)
             echo "---"
             echo "正在停止 Flink 集群..."
@@ -255,13 +273,13 @@ while true; do
             $FLINK_HOME/bin/stop-cluster-mon.sh
             echo "服务已停止 (Service stopped)"
             ;;
-        4)
+        6)
             # ... (其他选项保持不变)
             echo "再见! (Goodbye!)"
             exit 0;
           ;;
         *)
-            echo "无效选项，请输入 1-4 之间的数字。"
+            echo "无效选项，请输入 1-5 之间的数字。"
             echo "Invalid option, please enter a number between 1 and 4."
             ;;
     esac
