@@ -33,17 +33,14 @@ if [ ! -d "${JAVA_HOME}" ]; then
 fi
 
 export FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
-export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
-export DEFAULT_HADOOP_CONFIG=$CLOUD_HOME/file/cloud_mon/DEFAULT_CONFIG
+#export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
+#export CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
+#export MON_NFS_HOME=$CLOUD_HOME/file/cloud_mon
+#export FLINK_CONFIG_FOLDER_NAME=default_lightweight_session_flink-1.17.1_CONFIG
+#export FLINK_CONF_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/flinkconf
+#export FLINK_LOG_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/appwork/logs
 $FLINK_HOME/bin/yarn-session-mon.sh \
---queue default
---container 1
---slots 2 \
---jobManagerMemory 1024
---taskManagerMemory 1024
---name "MON-FLINK-SESSION-mon-LIGNT_WEIGHT" \
--Dyarn.tags=MON-FLINK-SESSION-mon-LIGNT_WEIGHT \
--Dyarn.provided.lib.dirs="hdfs:///user/tempodata/flink1117tdh8/1.17.1/lib;hdfs:///user/tempodata/df/df08/app-dependency" \
--Dyarn.ship-files="${DEFAULT_HADOOP_CONFIG}/yarn-job-jaas.conf;$DEFAULT_HADOOP_CONFIG/merit-tempodata.keytab;$DEFAULT_HADOOP_CONFIG/core-site.xml;$$DEFAULT_HADOOP_CONFIG/hdfs-site.xml;$$DEFAULT_HADOOP_CONFIG/yarn-site.xml;$DEFAULT_HADOOP_CONFIG/mapred-site.xml;$$DEFAULT_HADOOP_CONFIG/DEFAULT_CONFIG.zip;$DEFAULT_HADOOP_CONFIG/hbase-site.xml;$DEFAULT_HADOOP_CONFIG/hive-site.xml" \
--Denv.java.opts.client="--add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED" \
--Denv.java.opts="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED  --add-reads=org.apache.arrow.flight.core=ALL-UNNAMED --add-opens=java.base/java.nio=org.apache.arrow.dataset,org.apache.arrow.memory.core,ALL-UNNAMED --add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED -Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED  --add-reads=org.apache.arrow.flight.core=ALL-UNNAMED --add-opens=java.base/java.nio=org.apache.arrow.dataset,org.apache.arrow.memory.core,ALL-UNNAMED --add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED"
+-qu default  \
+-t "$HADOOP_CONF_DIR/" \
+-nm "MON-FLINK-SESSION-LIGHT_WEIGHT" \
+-at "$YARN_APP_TYPE"

@@ -6,7 +6,8 @@ import java.net.URL;
 
 public class FlinkRestApiDFClient {
 
-    private static final String FLINK_REST_URL = "http://192.168.153.130:8081"; // Flink REST API 地址
+   // private static final String FLINK_REST_URL = "http://192.168.153.130:8081"; // Flink REST API 地址
+    private static final String FLINK_REST_URL = "http://nn1:43627"; // Flink REST API 地址
     // 本地 JAR 文件路径
     private static final String JAR_FILE_PATH = "D:\\srcs\\flinbachsessionverify\\flinbachsessionverify\\src\\main\\resources\\tempo-dw-flow-engine-app-6.0.0.jar";
     private static final String ENTRY_CLASS = "com.meritdata.cloud.tempo.dw.flow.engine.app.Engine"; // 入口类全名

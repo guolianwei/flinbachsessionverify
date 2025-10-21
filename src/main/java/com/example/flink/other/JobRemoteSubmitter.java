@@ -6,8 +6,10 @@ import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 public class JobRemoteSubmitter {
     public static void main(String[] args) throws Exception {
         // Flink 集群 JobManager 的 REST 地址和端口
-        String jobManagerHost = "192.168.153.130";
-        int jobManagerPort = 8081;
+//        String jobManagerHost = "192.168.153.130";
+        String jobManagerHost = "nn2";
+//        int jobManagerPort = 8081;
+        int jobManagerPort = 35317;
 
         // 本地打包的 JAR 文件路径
         String jarPath =

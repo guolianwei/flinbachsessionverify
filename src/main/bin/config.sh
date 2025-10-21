@@ -295,6 +295,8 @@ if [ -z "${FLINK_LOG_DIR}" ]; then
     FLINK_LOG_DIR=$(readFromConfig ${KEY_ENV_LOG_DIR} "${DEFAULT_FLINK_LOG_DIR}" "${YAML_CONF}")
 fi
 
+echo "config.sh->FLINK_LOG_DIR:$FLINK_LOG_DIR"
+
 if [ -z "${YARN_CONF_DIR}" ]; then
     YARN_CONF_DIR=$(readFromConfig ${KEY_ENV_YARN_CONF_DIR} "${DEFAULT_YARN_CONF_DIR}" "${YAML_CONF}")
 fi

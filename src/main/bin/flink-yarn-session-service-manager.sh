@@ -4,17 +4,28 @@
 # Get Flink installation path automatically
 FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
 CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
-export FLINK_CONF_DIR=$CLOUD_HOME/file/cloud_mon/default_flink-1.17.1_CONFIG/flinkconf/
-export HADOOP_CONF_DIR=$CLOUD_HOME/file/cloud_mon/DEFAULT_CONFIG
-export HBASE_CONF_DIR=$CLOUD_HOME/file/cloud_mon/DEFAULT_CONFIG
+export MON_NFS_HOME=$CLOUD_HOME/file/cloud_mon
+export FLINK_CONFIG_FOLDER_NAME=default_lightweight_session_flink-1.17.1_CONFIG
+export FLINK_CONF_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/flinkconf
+export FLINK_LOG_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/appwork/logs
+export FLINK_WORK_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/appwork
+export HADOOP_CONF_DIR=$MON_NFS_HOME/DEFAULT_CONFIG
+#export DEFAULT_HADOOP_CONFIG=$CLOUD_HOME/file/cloud_mon/DEFAULT_CONFIG
+export HBASE_CONF_DIR=$MON_NFS_HOME/DEFAULT_CONFIG
 export HADOOP_CLASSPATH="${FLINK_HOME}/hadooplib/*"
-CONF_FILE="$FLINK_CONF_DIR/flink-conf.yaml"
+export CONF_FILE="$FLINK_CONF_DIR/flink-conf.yaml"
+export YARN_APP_TYPE="MD_MON-LIGHT_WEIGHT"
+echo "FLINK_CONF_FILE_PATH: $CONF_FILE"
+
+#export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
+
 
 # 创建任务运行日志目录
 # Create directory for job logs
-LOGS_DIR="$FLINK_HOME/logs"
-mkdir -p "$LOGS_DIR"
-echo "任务日志目录 (Log directory): $LOGS_DIR"
+mkdir -p "$FLINK_LOG_DIR"
+echo "日志目录 (Log directory): $FLINK_LOG_DIR"
+echo "配置目录 (Config directory): $FLINK_CONF_DIR"
+echo "配置文件 (Config file): $CONF_FILE"
 echo "=================================================="
 
 #
@@ -31,9 +42,8 @@ echo "=================================================="
 #
 check_flink_startup_status() {
   # --- 1. 定义常量 ---
-  local a_flag="meritdata_mon_light_weight_conf"
-  local jobmanager_class="org.apache.flink.runtime.entrypoint.StandaloneSessionClusterEntrypoint"
-  local taskmanager_class="org.apache.flink.runtime.taskexecutor.TaskManagerRunner"
+  local a_flag="${FLINK_CONFIG_FOLDER_NAME}"
+  local yarnsessioncli_class="org.apache.flink.yarn.cli.FlinkYarnSessionCli"
 
   # 【修改点】
   # 使用 ${1:-10} 语法:
@@ -72,7 +82,7 @@ check_flink_startup_status() {
       pids_for_ps=$(echo "${pids}" | tr '\n' ',' | sed 's/,$//') # sed 's/,$//' 删除末尾的逗号
 
       # 步骤 3.3: 使用 ps -fww -p [PIDs] 获取完整、不截断的命令行
-      process_list=$(ps -fww -p "${pids_for_ps}" 2>/dev/null | grep -E "${jobmanager_class}|${taskmanager_class}")
+      process_list=$(ps -fww -p "${pids_for_ps}" 2>/dev/null | grep -E "${yarnsessioncli_class}")
       # 2>/dev/null 隐藏 ps 可能报出的 "PID 不存在" 的错误 (以防进程在 pgrep 和 ps 之间死掉)
   fi
 
@@ -81,7 +91,7 @@ check_flink_startup_status() {
     # 如果 process_list 字符串为空，说明未找到
     echo "--------------------------------------------------"
     echo "【启动失败】"
-    echo "错误：未找到标记为 '${a_flag}' 的 Flink JobManager 或 TaskManager 进程。"
+    echo "错误：未找到标记为 '${a_flag}' 的yarn轻量服务进程。"
     echo "（pgrep 找到的 PIDs: [${pids:-无}]）"
     echo "请检查启动日志以获取详细信息。"
     echo "--------------------------------------------------"
@@ -232,13 +242,17 @@ while true; do
                 echo "好的，将使用当前配置启动 Flink..."
                 echo "OK, starting Flink with the current configuration..."
             fi
-
+            #自动配置yarn.properties-file.location
+            echo "更新$CONF_FILE 的配置项 yarn.properties-file.location: $FLINK_WORK_DIR"
+            update_config "yarn.properties-file.location" "$FLINK_WORK_DIR"
             # --- 启动 Flink ---
             echo ""
             echo "正在启动 监管轻量任务 Flink 集群..."
             echo "Starting Flink cluster..."
-            $FLINK_HOME/bin/start-yarn-session-mon.sh
+            nohup $FLINK_HOME/bin/start-yarn-session-mon.sh > $FLINK_LOG_DIR/flink-yarn-session-mon-lightweight.log 2>&1 &
 
+            sleep 2
+            tail -f $FLINK_LOG_DIR/flink-yarn-session-mon-lightweight.log
 
             check_flink_startup_status 10
             # 检查函数返回值

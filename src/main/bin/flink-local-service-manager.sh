@@ -2,8 +2,11 @@
 
 # 自动获取 Flink 安装路径
 # Get Flink installation path automatically
-FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
-export FLINK_CONF_DIR=$FLINK_HOME/meritdata_mon_light_weight_conf
+export FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
+export CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
+export MON_NFS_HOME=$CLOUD_HOME/file/cloud_mon
+export FLINK_CONFIG_FOLDER_NAME=default_lightweight_local_flink-1.17.1_CONFIG
+export FLINK_CONF_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/flinkconf
 CONF_FILE="$FLINK_CONF_DIR/flink-conf.yaml"
 
 # 创建任务运行日志目录
@@ -27,7 +30,7 @@ echo "=================================================="
 #
 check_flink_startup_status() {
   # --- 1. 定义常量 ---
-  local a_flag="meritdata_mon_light_weight_conf"
+  local a_flag="${FLINK_CONFIG_FOLDER_NAME}"
   local jobmanager_class="org.apache.flink.runtime.entrypoint.StandaloneSessionClusterEntrypoint"
   local taskmanager_class="org.apache.flink.runtime.taskexecutor.TaskManagerRunner"
 
