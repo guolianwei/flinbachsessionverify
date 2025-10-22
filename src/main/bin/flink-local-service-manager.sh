@@ -2,8 +2,10 @@
 
 # 自动获取 Flink 安装路径
 # Get Flink installation path automatically
-export FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
-export CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
+FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
+export FLINK_HOME
+CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
+export CLOUD_HOME
 export JAVA_HOME=$CLOUD_HOME/jdk/linux/jdk-21.0.2/
 if [ ! -d "${JAVA_HOME}" ]; then
     echo "错误：JAVA_HOME 目录不存在于 '${JAVA_HOME}'" >&2
