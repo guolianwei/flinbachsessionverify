@@ -7,13 +7,14 @@ export CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
 export MON_NFS_HOME=$CLOUD_HOME/file/cloud_mon
 export FLINK_CONFIG_FOLDER_NAME=default_lightweight_local_flink-1.17.1_CONFIG
 export FLINK_CONF_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/flinkconf
+export FLINK_LOG_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/appwork/logs
 CONF_FILE="$FLINK_CONF_DIR/flink-conf.yaml"
+export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-reads=org.apache.arrow.flight.core=ALL-UNNAMED --add-opens=java.base/java.nio=org.apache.arrow.dataset,org.apache.arrow.memory.core,ALL-UNNAMED --add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED"
+
 
 # 创建任务运行日志目录
-# Create directory for job logs
-LOGS_DIR="$FLINK_HOME/logs"
-mkdir -p "$LOGS_DIR"
-echo "任务日志目录 (Log directory): $LOGS_DIR"
+mkdir -p "$FLINK_LOG_DIR"
+echo "任务日志目录 (Log directory): $FLINK_LOG_DIR"
 echo "=================================================="
 
 #
