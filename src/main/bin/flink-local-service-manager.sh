@@ -185,7 +185,7 @@ while true; do
     echo "4. 获得轻量服务访问 Web UI 地址 (Get Flink Service Web UI Addresses)"
     echo "5. 停止 Flink (Stop Flink)"
     echo "6. 退出控制台 (Exit)"
-    read -p "请输入选项(1-4) (Enter your choice): " choice
+    read -p "请输入选项(1-6) (Enter your choice): " choice
 
     case $choice in
         1)
