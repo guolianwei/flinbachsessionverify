@@ -304,6 +304,6 @@ env.java.opts: -Dfile.encoding=utf8
 
 # Interval in milliseconds for refreshing the monitored directories.
 #historyserver.archive.fs.refresh-interval: 10000rest.port: 8181
-rest.port: 8181
+rest.port: 58083
 jobmanager.memory.process.size: 1g
 taskmanager.memory.process.size: 5g

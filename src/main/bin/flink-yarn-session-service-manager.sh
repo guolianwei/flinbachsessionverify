@@ -24,7 +24,7 @@ export YARN_APP_TYPE="MD_MON-LIGHT_WEIGHT"
 echo "FLINK_CONF_FILE_PATH: $CONF_FILE"
 export YARN_SESSION_CLI_CLASS="org.apache.flink.yarn.cli.FlinkYarnSessionCli"
 
-#export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
+export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
 
 
 # 创建任务运行日志目录
@@ -152,7 +152,8 @@ get_config() {
     local key=$1
     # 从配置文件中查找 key，排除注释行，然后提取 value
     # Find the key in the config file, exclude commented lines, and extract the value
-    local value=$(grep "^\s*${key}:" "$CONF_FILE" | sed 's/#.*//' | awk '{print $2}')
+    local value
+    value=$(grep "^\s*${key}:" "$CONF_FILE" | sed 's/#.*//' | awk '{print $2}')
     echo "$value"
 }
 
