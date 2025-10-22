@@ -4,6 +4,11 @@
 # Get Flink installation path automatically
 export FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
 export CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
+export JAVA_HOME=$CLOUD_HOME/jdk/linux/jdk-21.0.2/
+if [ ! -d "${JAVA_HOME}" ]; then
+    echo "错误：JAVA_HOME 目录不存在于 '${JAVA_HOME}'" >&2
+    return 1 # 返回错误码
+fi
 export MON_NFS_HOME=$CLOUD_HOME/file/cloud_mon
 export FLINK_CONFIG_FOLDER_NAME=default_lightweight_local_flink-1.17.1_CONFIG
 export FLINK_CONF_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/flinkconf
@@ -41,21 +46,24 @@ check_flink_startup_status() {
   # 否则 (如果 $1 未传递或为空)，则使用默认值 10。
   local countdown_seconds=${1:-10}
 
-  echo "将在 ${countdown_seconds} 秒后开始检查进程状态..."
+  if [ $countdown_seconds -eq 0 ]; then
+    echo "将在 ${countdown_seconds} 秒后开始检查进程状态..."
+  else
+    # --- 2. 执行倒计时 ---
+    # 增加一个简单的输入验证，防止 $countdown_seconds 为非数字
+    if ! [[ "${countdown_seconds}" =~ ^[0-9]+$ ]]; then
+      echo "错误：提供的倒计时 '${countdown_seconds}' 不是一个有效的数字。将使用默认值 10。"
+      countdown_seconds=10
+    fi
 
-  # --- 2. 执行倒计时 ---
-  # 增加一个简单的输入验证，防止 $countdown_seconds 为非数字
-  if ! [[ "${countdown_seconds}" =~ ^[0-9]+$ ]]; then
-    echo "错误：提供的倒计时 '${countdown_seconds}' 不是一个有效的数字。将使用默认值 10。" >&2
-    countdown_seconds=10
+    for i in $(seq ${countdown_seconds} -1 1); do
+      echo -n "请等待 ${i} 秒...  "
+      echo -n -e "\r"
+      sleep 1
+    done
   fi
 
-  for i in $(seq ${countdown_seconds} -1 1); do
-    echo -n "请等待 ${i} 秒...  "
-    echo -n -e "\r"
-    sleep 1
-  done
-  echo "检查开始...                                "
+  echo "检查开始..."
 
 
   # --- 3. 查找进程 (分两步) ---
@@ -80,16 +88,24 @@ check_flink_startup_status() {
   if [ -z "${process_list}" ]; then
     # 如果 process_list 字符串为空，说明未找到
     echo "--------------------------------------------------"
-    echo "【启动失败】"
-    echo "错误：未找到标记为 '${a_flag}' 的 Flink JobManager 或 TaskManager 进程。"
+        if [ "$countdown_seconds" -eq 0 ]; then
+          echo ""
+        else
+          echo "【启动失败】"
+          echo "请检查任务日志 (Log directory): $FLINK_LOG_DIR"
+        fi
+    echo "未找到标记为 '${a_flag}' 的 Flink JobManager 或 TaskManager 进程。"
     echo "（pgrep 找到的 PIDs: [${pids:-无}]）"
-    echo "请检查启动日志以获取详细信息。"
     echo "--------------------------------------------------"
     return 1 # 返回非零值表示失败
   else
     # 找到了进程
     echo "--------------------------------------------------"
-    echo "【启动成功】"
+    if [ "$countdown_seconds" -eq 0 ]; then
+      echo ""
+    else
+      echo "【启动成功】"
+    fi
     echo "已找到以下 Flink 进程 (完整命令行)："
     echo ""
 
@@ -174,7 +190,140 @@ update_config() {
     fi
 }
 
+# 函数：配置并启动 Flink 集群
+# 依赖：get_config, update_config, check_flink_startup_status, show_service_urls 函数和 CONF_FILE 变量
+# 返回值：0表示成功，1表示失败
+configure_and_start_flink_cluster() {
+    local CONF_FILE="${CONF_FILE}"  # 使用全局配置文件名
 
+    # --- 备份原始配置 ---
+    if [ ! -f "${CONF_FILE}.original" ]; then
+        cp "$CONF_FILE" "${CONF_FILE}.original"
+        echo "首次运行，原始配置文件已备份至: ${CONF_FILE}.original"
+    fi
+
+    # --- 读取并显示当前配置 ---
+    echo "---"
+    echo "正在读取当前 Flink 配置..."
+    local CURRENT_REST_PORT=$(get_config "rest.port")
+    local CURRENT_JM_MEMORY=$(get_config "jobmanager.memory.process.size")
+    local CURRENT_TM_MEMORY=$(get_config "taskmanager.memory.process.size")
+
+    echo "当前配置 (Current Configuration):"
+    echo "  - REST 端口 (REST Port):                ${CURRENT_REST_PORT:-未设置 (默认: 8081)}"
+    echo "  - JobManager 内存 (JobManager Memory):    ${CURRENT_JM_MEMORY:-未设置}"
+    echo "  - TaskManager 内存 (TaskManager Memory):  ${CURRENT_TM_MEMORY:-未设置}"
+    echo "---"
+
+    # --- 询问用户操作 ---
+    read -p "是否使用以上配置直接启动? [Y/n] (Use this configuration to start?): " confirm_start
+
+    if [[ "$confirm_start" =~ ^[Nn]$ ]]; then
+        # --- 获取用户输入进行修改 ---
+        echo ""
+        echo "请输入新的 Flink 配置 (直接回车将保留当前值)"
+        echo "Please enter new Flink configuration (press Enter to keep the current value)"
+
+        read -p "设置新 REST 端口 [当前: ${CURRENT_REST_PORT:-8081}]: " NEW_REST_PORT
+        read -p "设置新 JobManager 内存 [当前: ${CURRENT_JM_MEMORY:-无}]: " NEW_JM_MEMORY
+        read -p "设置新 TaskManager 内存 [当前: ${CURRENT_TM_MEMORY:-无}]: " NEW_TM_MEMORY
+        echo "---"
+
+        update_config "rest.port" "$NEW_REST_PORT"
+        update_config "jobmanager.memory.process.size" "$NEW_JM_MEMORY"
+        update_config "taskmanager.memory.process.size" "$NEW_TM_MEMORY"
+
+        rm -f "${CONF_FILE}.bak"
+    else
+        echo "好的，将使用当前配置启动 Flink..."
+        echo "OK, starting Flink with the current configuration..."
+    fi
+
+    # --- 启动 Flink ---
+    echo ""
+    echo "正在启动 监管轻量任务 Flink 集群..."
+    echo "Starting Flink cluster..."
+    $FLINK_HOME/bin/start-cluster-mon.sh
+
+    # --- 检查启动状态 ---
+    check_flink_startup_status 10
+    local startup_status=$?
+
+    if [ $startup_status -eq 0 ]; then
+        # 返回值为0，表示启动成功，调用显示服务地址函数
+        show_service_urls
+        return 0
+    else
+        # 返回值为非0，表示启动失败，输出错误信息
+        echo ""
+        echo "Flink 服务启动检查失败，请查看上述错误信息并排查问题。"
+        return 1
+    fi
+}
+stop_flink_local_process_when_found() {
+    echo "找到正在运行的本地轻量服务"
+    # 显示严重警告
+    echo "⚠️  警告：停止服务将中断所有正在运行的Flink任务！"
+    echo "   这将导致："
+    echo "   - 所有运行中的Flink作业将被强制终止"
+    echo "   - 未保存的计算结果可能会丢失"
+    echo "   - 需要重新提交所有作业才能恢复服务"
+    echo ""
+
+    # 提示用户确认
+    read -p "确认要停止服务吗？(y/N，默认N): " confirm_stop
+
+    # 将用户输入转换为小写，并设置默认值
+    confirm_stop=${confirm_stop:-n}
+    confirm_stop=$(echo "$confirm_stop" | tr '[:upper:]' '[:lower:]')
+
+    if [ "$confirm_stop" = "y" ] || [ "$confirm_stop" = "yes" ]; then
+        echo "正在停止服务..."
+        $FLINK_HOME/bin/stop-cluster-mon.sh
+        # 检查停止是否成功
+        local stop_status=$?
+        if [ $stop_status -eq 0 ]; then
+            echo "✅ 服务停止完成 (Service stopped completely)"
+            # 可选：再次检查确认服务确实已停止
+            sleep 2
+            check_flink_startup_status 0
+            local result_after_stop=$?
+            if [ "$result_after_stop" -eq 1 ]; then
+                echo "✅ 验证：所有本地轻量服务已确认停止"
+                return 0
+            else
+                echo "⚠️  警告：部分服务可能仍在运行，请手动检查"
+                echo "$result_after_stop"
+                return 3
+            fi
+        else
+            echo "❌ 服务停止失败，请手动检查 (Service stop failed, please check manually)"
+            return 4
+        fi
+    else
+        echo "操作已取消，服务继续运行 (Operation cancelled, service continues running)"
+        return 1
+    fi
+}
+stop_flink_local_process() {
+    echo "---"
+    echo "正在停止本地轻量服务"
+    echo "Stopping flink local service..."
+
+    # 首先检查是否有正在运行的Yarn应用
+    echo "检查正在运行的本地轻量服务..."
+    check_flink_startup_status 0
+    local return_code=$?
+    # 判断是否找到记录
+    echo "结果: $return_code"
+    if [ "$return_code" -eq 0 ]; then
+        stop_flink_local_process_when_found
+    else
+        echo "ℹ️  未找到正在运行的轻量flink服务，无需停止"
+        echo "   (No running light-weight flink service found, no need to stop)"
+        return 2
+    fi
+}
 # 服务控制循环
 # Main control loop
 while true; do
@@ -190,95 +339,44 @@ while true; do
 
     case $choice in
         1)
-            # --- 备份原始配置 ---
-            if [ ! -f "${CONF_FILE}.original" ]; then
-                cp "$CONF_FILE" "${CONF_FILE}.original"
-                echo "首次运行，原始配置文件已备份至: ${CONF_FILE}.original"
-            fi
-
-            # --- 读取并显示当前配置 ---
-            echo "---"
-            echo "正在读取当前 Flink 配置..."
-            CURRENT_REST_PORT=$(get_config "rest.port")
-            CURRENT_JM_MEMORY=$(get_config "jobmanager.memory.process.size")
-            CURRENT_TM_MEMORY=$(get_config "taskmanager.memory.process.size")
-
-            echo "当前配置 (Current Configuration):"
-            echo "  - REST 端口 (REST Port):                ${CURRENT_REST_PORT:-未设置 (默认: 8081)}"
-            echo "  - JobManager 内存 (JobManager Memory):    ${CURRENT_JM_MEMORY:-未设置}"
-            echo "  - TaskManager 内存 (TaskManager Memory):  ${CURRENT_TM_MEMORY:-未设置}"
-            echo "---"
-
-            # --- 询问用户操作 ---
-            read -p "是否使用以上配置直接启动? [Y/n] (Use this configuration to start?): " confirm_start
-
-            if [[ "$confirm_start" =~ ^[Nn]$ ]]; then
-                # --- 获取用户输入进行修改 ---
-                echo ""
-                echo "请输入新的 Flink 配置 (直接回车将保留当前值)"
-                echo "Please enter new Flink configuration (press Enter to keep the current value)"
-
-                read -p "设置新 REST 端口 [当前: ${CURRENT_REST_PORT:-8081}]: " NEW_REST_PORT
-                read -p "设置新 JobManager 内存 [当前: ${CURRENT_JM_MEMORY:-无}]: " NEW_JM_MEMORY
-                read -p "设置新 TaskManager 内存 [当前: ${CURRENT_TM_MEMORY:-无}]: " NEW_TM_MEMORY
-                echo "---"
-
-                update_config "rest.port" "$NEW_REST_PORT"
-                update_config "jobmanager.memory.process.size" "$NEW_JM_MEMORY"
-                update_config "taskmanager.memory.process.size" "$NEW_TM_MEMORY"
-
-                rm -f "${CONF_FILE}.bak"
-            else
-                echo "好的，将使用当前配置启动 Flink..."
-                echo "OK, starting Flink with the current configuration..."
-            fi
-
-            # --- 启动 Flink ---
-            echo ""
-            echo "正在启动 监管轻量任务 Flink 集群..."
-            echo "Starting Flink cluster..."
-            $FLINK_HOME/bin/start-cluster-mon.sh
-
-
-            check_flink_startup_status 10
+            # 首先检查正在运行的轻量服务
+            check_flink_startup_status 0
             # 检查函数返回值
             if [ $? -eq 0 ]; then
                 # 返回值为0，表示启动成功，调用显示服务地址函数
+                echo "找到正在运行的轻量flink服务："
                 # --- 构造并打印所有可用的 Web UI 地址 ---
                 show_service_urls
+                echo "服务已在运行，无需重复启动"
             else
-                # 返回值为非0，表示启动失败，输出错误信息
                 echo ""
-                echo "Flink 服务启动检查失败，请查看上述错误信息并排查问题。"
+                echo "未找到Yarn服务上的轻量flink服务"
+                echo "可以启动新服务"
+                configure_and_start_flink_cluster
             fi
-
             ;;
         2)
             # ... (其他选项保持不变)
             echo "---"
             echo "正在运行的任务 (Running Jobs):"
-            $FLINK_HOME/bin/flink list -all
+            $FLINK_HOME/bin/flink-mon list -all
             ;;
         3)
-          echo "---"
-          echo "正在检查运行中的Flink 轻量服务进程..."
-          check_flink_startup_status 0
-          ;;
-        4)
-          echo "---"
-          echo "获得轻量服务访问 Web UI 地址..."
-          show_service_urls
-          ;;
-        5)
-            # ... (其他选项保持不变)
             echo "---"
-            echo "正在停止 Flink 集群..."
-            echo "Stopping Flink cluster..."
-            $FLINK_HOME/bin/stop-cluster-mon.sh
-            echo "服务已停止 (Service stopped)"
+            echo "正在检查运行中的Flink 轻量服务进程..."
+            check_flink_startup_status 0
+            ;;
+        4)
+            echo "---"
+            echo "获得轻量服务访问 Web UI 地址..."
+            show_service_urls
+            ;;
+        5)
+            echo "---"
+            stop_flink_local_process
             ;;
         6)
-            # ... (其他选项保持不变)
+            echo "---"
             echo "再见! (Goodbye!)"
             exit 0;
           ;;

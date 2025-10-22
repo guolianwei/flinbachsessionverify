@@ -20,16 +20,6 @@
 bin=`dirname "$0"`
 bin=`cd "$bin"; pwd`
 
-SCRIPT_DIR=$(cd ../../ "$(dirname "$0")" && pwd)
-  # 计算上两级目录作为 CLOUD_HOME，并导出为环境变量
-  # 使用 'export' 使得 CLOUD_HOME 对子进程也可见
-export CLOUD_HOME=$(dirname "$(dirname "${SCRIPT_DIR}")")
-export JAVA_HOME=$CLOUD_HOME/jdk/linux/jdk-21.0.2/
-
-if [ ! -d "${JAVA_HOME}" ]; then
-    echo "错误：JAVA_HOME 目录不存在于 '${JAVA_HOME}'" >&2
-    return 1 # 返回错误码
-fi
 . "$bin"/config.sh
 
 # Start the JobManager instance(s)

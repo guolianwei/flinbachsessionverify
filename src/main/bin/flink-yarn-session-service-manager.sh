@@ -4,6 +4,12 @@
 # Get Flink installation path automatically
 FLINK_HOME=$(cd "$(dirname "$0")/.." && pwd)
 CLOUD_HOME=$(cd "$(dirname "$0")/../../../.." && pwd)
+export JAVA_HOME=$CLOUD_HOME/jdk/linux/jdk-21.0.2/
+
+if [ ! -d "${JAVA_HOME}" ]; then
+    echo "错误：JAVA_HOME 目录不存在于 '${JAVA_HOME}'" >&2
+    return 1 # 返回错误码
+fi
 export MON_NFS_HOME=$CLOUD_HOME/file/cloud_mon
 export FLINK_CONFIG_FOLDER_NAME=default_lightweight_session_flink-1.17.1_CONFIG
 export FLINK_CONF_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/flinkconf
@@ -293,7 +299,7 @@ stop_flink_yarn_session() {
 
     # 首先检查是否有正在运行的Yarn应用
     echo "检查正在运行的Yarn应用..."
-    result=$(get_yarn_apps_by_type)  # 这里假设您已定义 get_yarn_apps_by_type 函数
+    result=$(get_yarn_apps_by_type)
 
     # 判断是否找到记录
     if [ -n "$result" ]; then
@@ -325,8 +331,7 @@ stop_flink_yarn_session() {
             # 检查停止是否成功
             local stop_status=$?
             if [ $stop_status -eq 0 ]; then
-                echo "✅ 服务已成功停止 (Service stopped successfully)"
-
+                echo "✅ 服务停止完成 (Service stopped completely)"
                 # 可选：再次检查确认服务确实已停止
                 sleep 2
                 result_after_stop=$(get_yarn_apps_by_type)
@@ -356,7 +361,7 @@ stop_flink_yarn_session() {
 # Main control loop
 while true; do
     echo ""
-    echo "--- Flink 本地服务控制台 ---"
+    echo "--- Flink Yarn Session服务控制台 ---"
     echo "1. 启动 Flink on Yarn (Start Flink on Yarn)"
     echo "2. 查看正在运行的轻量服务（Flink session Yarn应用） (Yarn Running Apps)"
     echo "3. 检查运行中的Flink本地轻量服务进程(List Running Flink Service Processes)"
