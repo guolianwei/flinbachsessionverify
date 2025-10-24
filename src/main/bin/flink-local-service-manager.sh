@@ -230,18 +230,22 @@ show_service_urls() {
 }
 #
 # 函数：从 flink-conf.yaml 读取指定的配置项
-# Function: Read a specific configuration value from flink-conf.yaml
+# Function: Read a specific configuration value from flink-conf.yaml (Optimized)
 # 参数1: 配置项 Key (e.g., rest.port)
 #
 get_config() {
     local key=$1
-    # 从配置文件中查找 key，排除注释行，然后提取 value
-    # Find the key in the config file, exclude commented lines, and extract the value
+    # 1. 查找以 key: 开头的行 (忽略前面的空格)
+    # 2. 移除行尾的注释
+    # 3. 使用 sed 移除 key 和冒号 (以及前后的空格)，只保留值
     local value
-    value=$(grep "^\s*${key}:" "$CONF_FILE" | sed 's/#.*//' | awk '{print $2}')
+    value=$(grep "^\s*${key}:" "$CONF_FILE" | sed 's/#.*//' | sed -E "s/^\s*${key}:\s*//")
+
+    # 再次清理一下可能存在的前后空格
+    value=$(echo "$value" | sed 's/^\s*//;s/\s*$//')
+
     echo "$value"
 }
-
 #
 # 函数：修改 Flink 配置
 # Function: Modify a configuration in flink-conf.yaml

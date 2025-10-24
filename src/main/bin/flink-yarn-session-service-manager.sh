@@ -244,18 +244,97 @@ show_service_urls() {
         echo "轻量服务地址: $tracking_url"
     done
 }
+
 #
 # 函数：从 flink-conf.yaml 读取指定的配置项
-# Function: Read a specific configuration value from flink-conf.yaml
+# Function: Read a specific configuration value from flink-conf.yaml (Optimized)
 # 参数1: 配置项 Key (e.g., rest.port)
 #
 get_config() {
     local key=$1
-    # 从配置文件中查找 key，排除注释行，然后提取 value
-    # Find the key in the config file, exclude commented lines, and extract the value
+    # 1. 查找以 key: 开头的行 (忽略前面的空格)
+    # 2. 移除行尾的注释
+    # 3. 使用 sed 移除 key 和冒号 (以及前后的空格)，只保留值
     local value
-    value=$(grep "^\s*${key}:" "$CONF_FILE" | sed 's/#.*//' | awk '{print $2}')
+    value=$(grep "^\s*${key}:" "$CONF_FILE" | sed 's/#.*//' | sed -E "s/^\s*${key}:\s*//")
+
+    # 再次清理一下可能存在的前后空格
+    value=$(echo "$value" | sed 's/^\s*//;s/\s*$//')
+
     echo "$value"
+}
+
+#
+# 函数：检查 Flink 核心配置
+# Function: Validate core Flink configurations
+#
+# @description 检查 flink-conf.yaml 中的一系列必需配置项是否已设置且不为空。
+# @uses $CONF_FILE (global variable) 必须在调用此函数前设置
+# @uses get_config (function)
+# @returns 0 on success (all checks passed), 1 on failure
+#
+validate_flink_config() {
+    # 1. 确保 CONF_FILE 变量有效且文件可读
+    if [ -z "$CONF_FILE" ]; then
+        echo "错误：[validate_flink_config] 变量 'CONF_FILE' 未设置。" >&2
+        return 1
+    fi
+
+    if [ ! -f "$CONF_FILE" ] || [ ! -r "$CONF_FILE" ]; then
+        echo "错误：[validate_flink_config] 无法读取配置文件于: '$CONF_FILE'" >&2
+        return 1
+    fi
+
+    echo "正在开始检查配置文件: $CONF_FILE"
+
+    # 2. 定义需要检查的配置项列表
+    # (根据您的请求列表)
+    local keys_to_check=(
+        "yarn.provided.lib.dirs"
+        "env.java.opts.client"
+        "env.java.opts"
+        "yarn.ship-archives"
+        "env.java.home"
+        "containerized.taskmanager.env.JAVA_HOME"
+        "containerized.master.env.JAVA_HOME"
+    )
+
+    local validation_passed=true  # 标记是否所有检查都通过
+    local missing_keys=()       # 用于存储所有缺失的 key
+
+    # 3. 循环遍历并检查每一个 key
+    for key in "${keys_to_check[@]}"; do
+        # 调用 get_config 函数获取值
+        local value
+        value=$(get_config "$key")
+
+        # 检查值是否为空
+        if [ -z "$value" ]; then
+            missing_keys+=("$key") # 将失败的 key 加入数组
+            validation_passed=false
+        fi
+    done
+
+    # 4. 总结并返回结果
+    if [ "$validation_passed" = true ]; then
+        echo "配置检查成功：所有必需属性均已配置。"
+        return 0
+    else
+        echo "==================================================" >&2
+        echo "【配置检查失败】" >&2
+        echo "错误：在配置文件中缺少以下一个或多个必需属性，或其值为空：" >&2
+        echo "" >&2
+        echo "  配置文件路径: $CONF_FILE" >&2
+        echo "" >&2
+        echo "  缺失的属性:" >&2
+        for key in "${missing_keys[@]}"; do
+            echo "    - ${key}" >&2
+        done
+        echo "" >&2
+        echo "请在【flink-conf.yaml】中配置对应属性。" >&2
+        echo "==================================================" >&2
+        return 1
+    fi
 }
 
 #
@@ -313,6 +392,7 @@ check_light_weight_service() {
     fi
 }
 start_flink_session_service() {
+
               # ---  检查是否已经有启动的进程，如果有，则提示已经启动 ---
               echo "=== 检查服务状态 ==="
               if check_light_weight_service; then
@@ -321,7 +401,14 @@ start_flink_session_service() {
                   echo "服务已在运行，无需重复启动"
                   return 1
               fi
-
+              # 调用验证函数
+              validate_flink_config
+              # 检查验证结果 ($? 存储了上一个命令的返回值)
+              if [ $? -ne 0 ]; then
+                  echo "错误：Flink 配置验证失败，脚本终止。" >&2
+                  return 1 # 或者 exit 1
+              fi
+              echo "配置验证通过，继续执行..."
               # --- 备份原始配置 ---
               if [ ! -f "${CONF_FILE}.original" ]; then
                   cp "$CONF_FILE" "${CONF_FILE}.original"
