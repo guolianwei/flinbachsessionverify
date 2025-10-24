@@ -12,6 +12,7 @@ if [ ! -d "${JAVA_HOME}" ]; then
     echo "错误：JAVA_HOME 目录不存在于 '${JAVA_HOME}'" >&2
     return 1 # 返回错误码
 fi
+
 export MON_NFS_HOME=$CLOUD_HOME/file/cloud_mon
 export FLINK_CONFIG_FOLDER_NAME=default_lightweight_session_flink-1.17.1_CONFIG
 export FLINK_CONF_DIR=$MON_NFS_HOME/${FLINK_CONFIG_FOLDER_NAME}/flinkconf
@@ -27,7 +28,8 @@ echo "FLINK_CONF_FILE_PATH: $CONF_FILE"
 export YARN_SESSION_CLI_CLASS="org.apache.flink.yarn.cli.FlinkYarnSessionCli"
 
 export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
-
+#可选值: "操作系统环境自带" 或 "当前工具内置"
+export MON_HADOOP_CLIENT_SOURCE="操作系统环境自带"
 # --- 初始化 Flink 配置的函数 ---
 #
 # @description 检查 Flink 配置目录，如果不存在或不完整，则从模板目录拷贝，并拷贝【正式】的配置文件覆盖默认配置
@@ -240,7 +242,7 @@ show_service_urls() {
         echo "处理应用: $app_id ($app_name)"
         # 在这里添加对每个应用的处理逻辑
         local tracking_url
-        tracking_url=$(yarn application -status $app_id | grep -oP 'Tracking-URL : \K.*')
+        tracking_url=$("${MON_HADOOP_BIN_PATH}"yarn application -status $app_id | grep -oP 'Tracking-URL : \K.*')
         echo "轻量服务地址: $tracking_url"
     done
 }
@@ -475,9 +477,89 @@ start_flink_session_service() {
                   echo "Flink 服务启动检查失败，请查看上述错误信息并排查问题。"
               fi
 }
+set_hadoop_env() {
+    # 2. 函数参数接收用户选择
+    local hadoop_choice="$MON_HADOOP_CLIENT_SOURCE"  # 通过参数接收选择
+
+    # 3. 参数验证
+    if [ -z "$hadoop_choice" ]; then
+        echo "错误：必须提供MON_HADOOP_CLIENT_SOURCE选择参数！" >&2
+        echo "用法: 在config.sh中增加参数: MON_HADOOP_CLIENT_SOURCE=<选择>" >&2
+        echo "可选值: \"操作系统环境自带\" 或 \"当前工具内置\"" >&2
+        return 1
+    fi
+
+    # 4. 根据选择执行相应逻辑[1,2](@ref)
+    case "$hadoop_choice" in
+        "操作系统环境自带")
+            # 检查 'hadoop' 命令是否存在于当前 PATH
+            if command -v hadoop >/dev/null 2>&1; then
+                echo "使用操作系统环境自带的 Hadoop客户端。" >&2
+                # 打印当前的 HADOOP_CONF_DIR (如果已设置)
+                if [ -n "$HADOOP_CONF_DIR" ]; then
+                    echo "当前的 HADOOP_CONF_DIR 路径是: $HADOOP_CONF_DIR" >&2
+                else
+                    echo "警告：HADOOP_CONF_DIR 环境变量未设置。将依赖 Hadoop 默认配置。" >&2
+                fi
+            else
+                echo "错误：'hadoop' 命令不存在于您的系统 PATH 中。" >&2
+                return 1
+            fi
+            ;;
+
+        "当前工具内置")
+            echo "使用当前工具内置的 Hadoop 环境。" >&2
+
+            # 检查 $CLOUD_HOME 是否存在[2](@ref)
+            if [ -z "$CLOUD_HOME" ]; then
+                echo "错误：CLOUD_HOME 环境变量未设置！无法使用内置 Hadoop。" >&2
+                return 1
+            fi
+
+            # 设置临时的环境变量
+            HADOOP_HOME="$CLOUD_HOME/mids/hadoopclient/hadoop-3.3.4"
+            export HADOOP_HOME
+            echo "HADOOP_HOME 已重置为: $HADOOP_HOME" >&2
+
+            # 打印当前的 HADOOP_CONF_DIR (如果已设置)
+            if [ -n "$HADOOP_CONF_DIR" ]; then
+                echo "当前的 HADOOP_CONF_DIR 路径是: $HADOOP_CONF_DIR" >&2
+            else
+                echo "警告：HADOOP_CONF_DIR 环境变量未设置。将依赖 Hadoop 默认配置。" >&2
+            fi
+            MON_HADOOP_BIN_PATH="$HADOOP_HOME/bin/"
+            echo "当前的 MON_HADOOP_BIN_PATH 路径是: $MON_HADOOP_BIN_PATH" >&2
+            export MON_HADOOP_BIN_PATH
+            ;;
+        *)
+            echo "错误：无效选择 '$hadoop_choice'！" >&2
+            echo "请使用: \"操作系统环境自带\" 或 \"当前工具内置\"" >&2
+            return 1
+            ;;
+    esac
+}
+# 假设 CLOUD_HOME 和 YARN_APP_TYPE 是已设置的环境变量
+# export CLOUD_HOME="/opt/merit_cloud"
+# export YARN_APP_TYPE="FLINK"
+
+#
+# @description: 查询 YARN 上的特定类型应用
+#
+# 该函数会首先提示用户选择 Hadoop 环境 (系统自带或工具内置)。
+# 1. "系统自带": 会检查 hadoop 命令是否存在，并打印 classpath。
+# 2. "工具内置": 会临时设置 HADOOP_HOME 和 PATH。
+#
 get_yarn_apps_by_type() {
-    # 执行YARN应用查询并过滤特定类型
-    yarn application -list | grep "$YARN_APP_TYPE" | awk '{print $1, $2}'
+    # 1. 检查必要的外部变量
+    if [ -z "$YARN_APP_TYPE" ]; then
+        echo "错误：YARN_APP_TYPE 环境变量未设置！" >&2
+        return 1
+    fi
+    # 执行 YARN 查询
+    echo "--------------------------------------------------" >&2
+    echo "正在执行 YARN 查询 (yarn application -list)..." >&2
+    "${MON_HADOOP_BIN_PATH}"yarn application -list | grep "$YARN_APP_TYPE" | awk '{print $1, $2}'
+    return $?
 }
 # 函数：安全停止 Flink YARN Session 服务
 # 返回值：停止成功返回0，用户取消返回1，未找到服务返回2
@@ -546,6 +628,9 @@ stop_flink_yarn_session() {
         return 2
     fi
 }
+
+#设置hadoop 环境
+set_hadoop_env
 # 服务控制循环
 # Main control loop
 while true; do
