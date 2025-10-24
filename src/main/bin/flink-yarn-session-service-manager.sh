@@ -28,8 +28,6 @@ echo "FLINK_CONF_FILE_PATH: $CONF_FILE"
 export YARN_SESSION_CLI_CLASS="org.apache.flink.yarn.cli.FlinkYarnSessionCli"
 
 export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
-#可选值: "操作系统环境自带" 或 "当前工具内置"
-export MON_HADOOP_CLIENT_SOURCE="操作系统环境自带"
 # --- 初始化 Flink 配置的函数 ---
 #
 # @description 检查 Flink 配置目录，如果不存在或不完整，则从模板目录拷贝，并拷贝【正式】的配置文件覆盖默认配置
@@ -477,21 +475,109 @@ start_flink_session_service() {
                   echo "Flink 服务启动检查失败，请查看上述错误信息并排查问题。"
               fi
 }
-set_hadoop_env() {
-    # 2. 函数参数接收用户选择
-    local hadoop_choice="$MON_HADOOP_CLIENT_SOURCE"  # 通过参数接收选择
+set_hadoop_client_env() {
+    # 1. 定义常量
+    readonly HADOOP_CLIENT_SYSTEM="system"
+    readonly HADOOP_CLIENT_EMBEDDED="embedded"
+    readonly CONFIG_KEY="mon.hadoop.client.source"
 
-    # 3. 参数验证
-    if [ -z "$hadoop_choice" ]; then
-        echo "错误：必须提供MON_HADOOP_CLIENT_SOURCE选择参数！" >&2
-        echo "用法: 在config.sh中增加参数: MON_HADOOP_CLIENT_SOURCE=<选择>" >&2
-        echo "可选值: \"操作系统环境自带\" 或 \"当前工具内置\"" >&2
+    # 2. 检查 FLINK_CONF_DIR 是否设置
+    if [ -z "$FLINK_CONF_DIR" ]; then
+        echo "错误：FLINK_CONF_DIR 环境变量未设置！" >&2
         return 1
     fi
 
-    # 4. 根据选择执行相应逻辑[1,2](@ref)
+    # 3. 配置文件路径
+    local config_file="$FLINK_CONF_DIR/hadoop-client.properties"
+    local hadoop_choice
+
+    # 4. 检查配置文件是否存在并读取配置项
+    if [ -f "$config_file" ]; then
+        echo "找到配置文件: $config_file" >&2
+        hadoop_choice=$(grep "^$CONFIG_KEY" "$config_file" | awk -F'=' '{print $2}' | tr -d ' ' | tr -d '"')
+
+        if [ -n "$hadoop_choice" ]; then
+            echo "从配置文件中读取到 $CONFIG_KEY = $hadoop_choice" >&2
+
+            # 将中文配置值或旧的"builtin"值转换为新的常量（兼容旧配置）
+            case "$hadoop_choice" in
+                "操作系统环境自带")
+                    hadoop_choice="$HADOOP_CLIENT_SYSTEM"
+                    ;;
+                "当前工具内置"|"builtin")
+                    hadoop_choice="$HADOOP_CLIENT_EMBEDDED"
+                    ;;
+                # 如果已经是常量值，保持不变
+                "$HADOOP_CLIENT_SYSTEM"|"$HADOOP_CLIENT_EMBEDDED")
+                    ;;
+                *)
+                    echo "警告：配置值 '$hadoop_choice' 无效，将使用默认选择" >&2
+                    hadoop_choice=""
+                    ;;
+            esac
+        else
+            echo "配置文件中未找到 $CONFIG_KEY 配置项" >&2
+            hadoop_choice=""
+        fi
+    else
+        echo "配置文件不存在: $config_file" >&2
+        hadoop_choice=""
+    fi
+
+    # 5. 如果配置项为空，提示用户选择
+    if [ -z "$hadoop_choice" ]; then
+        echo "请选择要使用的 Hadoop 客户端环境：" >&2
+        echo "1) 操作系统环境自带 ($HADOOP_CLIENT_SYSTEM)" >&2
+        echo "2) 当前工具内置 ($HADOOP_CLIENT_EMBEDDED)" >&2
+
+        while true; do
+            read -p "请输入选项 (1或2): " user_input
+            case $user_input in
+                1)
+                    hadoop_choice="$HADOOP_CLIENT_SYSTEM"
+                    break
+                    ;;
+                2)
+                    hadoop_choice="$HADOOP_CLIENT_EMBEDDED"
+                    break
+                    ;;
+                *)
+                    echo "无效输入，请重新输入 1 或 2" >&2
+                    ;;
+            esac
+        done
+
+        # 6. 将用户选择写入配置文件
+        echo "将配置项 $CONFIG_KEY=$hadoop_choice 写入配置文件..." >&2
+
+        # 确保配置文件目录存在
+        mkdir -p "$(dirname "$config_file")"
+
+        # 如果配置文件不存在则创建，存在则更新或添加配置项
+        if [ -f "$config_file" ]; then
+            # 检查配置项是否已存在
+            if grep -q "^$CONFIG_KEY" "$config_file"; then
+                # 更新现有配置项
+                sed -i "s/^$CONFIG_KEY=.*/$CONFIG_KEY=$hadoop_choice/" "$config_file"
+            else
+                # 添加新配置项
+                echo "$CONFIG_KEY=$hadoop_choice" >> "$config_file"
+            fi
+        else
+            # 创建新配置文件
+            echo "# Hadoop客户端配置" > "$config_file"
+            echo "# $HADOOP_CLIENT_SYSTEM: 操作系统环境自带" >> "$config_file"
+            echo "# $HADOOP_CLIENT_EMBEDDED: 当前工具内置" >> "$config_file"
+            echo "$CONFIG_KEY=$hadoop_choice" >> "$config_file"
+            echo "已创建配置文件: $config_file" >&2
+        fi
+
+        echo "配置已保存到: $config_file" >&2
+    fi
+
+    # 7. 根据选择执行相应逻辑
     case "$hadoop_choice" in
-        "操作系统环境自带")
+        "$HADOOP_CLIENT_SYSTEM")
             # 检查 'hadoop' 命令是否存在于当前 PATH
             if command -v hadoop >/dev/null 2>&1; then
                 echo "使用操作系统环境自带的 Hadoop客户端。" >&2
@@ -507,10 +593,10 @@ set_hadoop_env() {
             fi
             ;;
 
-        "当前工具内置")
+        "$HADOOP_CLIENT_EMBEDDED")
             echo "使用当前工具内置的 Hadoop 环境。" >&2
 
-            # 检查 $CLOUD_HOME 是否存在[2](@ref)
+            # 检查 $CLOUD_HOME 是否存在
             if [ -z "$CLOUD_HOME" ]; then
                 echo "错误：CLOUD_HOME 环境变量未设置！无法使用内置 Hadoop。" >&2
                 return 1
@@ -531,12 +617,14 @@ set_hadoop_env() {
             echo "当前的 MON_HADOOP_BIN_PATH 路径是: $MON_HADOOP_BIN_PATH" >&2
             export MON_HADOOP_BIN_PATH
             ;;
+
         *)
             echo "错误：无效选择 '$hadoop_choice'！" >&2
-            echo "请使用: \"操作系统环境自带\" 或 \"当前工具内置\"" >&2
             return 1
             ;;
     esac
+
+    return 0
 }
 # 假设 CLOUD_HOME 和 YARN_APP_TYPE 是已设置的环境变量
 # export CLOUD_HOME="/opt/merit_cloud"
@@ -630,7 +718,7 @@ stop_flink_yarn_session() {
 }
 
 #设置hadoop 环境
-set_hadoop_env
+set_hadoop_client_env
 # 服务控制循环
 # Main control loop
 while true; do
