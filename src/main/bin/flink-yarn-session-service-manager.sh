@@ -28,6 +28,105 @@ export YARN_SESSION_CLI_CLASS="org.apache.flink.yarn.cli.FlinkYarnSessionCli"
 
 export FLINK_ENV_JAVA_OPTS="-Dfile.encoding=utf8 --add-exports java.base/sun.net.util=ALL-UNNAMED --add-exports java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-exports java.naming/com.sun.jndi.ldap=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED"
 
+# --- 初始化 Flink 配置的函数 ---
+#
+# @description 检查 Flink 配置目录，如果不存在或不完整，则从模板目录拷贝，并拷贝【正式】的配置文件覆盖默认配置
+# @assumes FLINK_HOME, FLINK_CONF_DIR, MON_NFS_HOME (global) 均已被设置
+# @returns 0 on success, 1 on failure
+#
+initialize_flink_config() {
+    # 源模板目录
+    local source_conf_dir="$FLINK_HOME/meritdata_mon_light_weight_local_conf"
+    # 目标核心配置文件
+    local conf_file="$FLINK_CONF_DIR/flink-conf.yaml"
+
+    local needs_init=0 # 标记是否需要初始化 (0=否, 1=是)
+
+    # --- 检查是否需要初始化 ---
+
+    # 1. 检查目标目录是否存在 (初次使用)
+    if [ ! -d "${FLINK_CONF_DIR}" ]; then
+        echo "信息：初次使用，正在初始化 Flink 配置目录..."
+        echo "      (目标: ${FLINK_CONF_DIR})"
+        needs_init=1
+
+    # 2. 检查目录存在，但核心文件是否缺失 (配置不完整)
+    elif [ ! -f "${conf_file}" ]; then
+        echo "警告：配置目录 '${FLINK_CONF_DIR}' 已存在，但缺少 'flink-conf.yaml'。"
+        echo "      系统将重新初始化轻量配置..."
+        needs_init=1
+
+    # 3. 配置已存在且完整
+    else
+        echo "信息：配置目录 '${FLINK_CONF_DIR}' 已存在且完整，跳过初始化。"
+        return 0 # 成功，无需操作
+    fi
+
+    # --- 执行初始化 (仅当 needs_init=1) ---
+    if [ $needs_init -eq 1 ]; then
+        # 1. 检查源目录是否存在
+        if [ ! -d "${source_conf_dir}" ]; then
+            echo "错误：源配置模板目录 '${source_conf_dir}' 也不存在！无法初始化配置。" >&2
+            return 1 # 致命错误
+        fi
+
+        # 2. 创建目标目录 (mkdir -p 是安全的，即使目录已存在)
+        echo "正在创建目标配置目录..."
+        mkdir -p "${FLINK_CONF_DIR}"
+        if [ $? -ne 0 ]; then
+            echo "错误：创建目录 '${FLINK_CONF_DIR}' 失败。" >&2
+            return 1
+        fi
+
+        # 3. 拷贝所有【默认】文件
+        echo "正在从 '${source_conf_dir}' 拷贝【默认】配置..."
+        # 使用 -a 保留属性, 使用 /. 确保拷贝所有内容 (包括 .dotfiles)
+        cp -a "${source_conf_dir}/." "${FLINK_CONF_DIR}/"
+
+        if [ $? -ne 0 ]; then
+            echo "错误：从 '${source_conf_dir}' 拷贝【默认】配置到 '${FLINK_CONF_DIR}' 失败。" >&2
+            return 1
+        fi
+
+        echo "默认配置拷贝成功。"
+
+        # --- 4. [修改点] 拷贝【正式】的 flink-conf.yaml 覆盖默认配置 ---
+        local official_conf_source_dir="$MON_NFS_HOME/default_flink-1.17.1_CONFIG"
+        local official_conf_file_source="${official_conf_source_dir}/flink-conf.yaml"
+        local official_conf_file_dest="${FLINK_CONF_DIR}/flink-conf.yaml"
+
+        echo "正在检查并拷贝【正式】的 'flink-conf.yaml' 配置文件..."
+
+        # 4.1 检查正式配置文件是否存在
+        if [ ! -f "${official_conf_file_source}" ]; then
+            echo "错误：未找到正式的 Flink 配置文件：'${official_conf_file_source}'" >&2
+            echo "       请在【系统管理】->【监管平台配置】 中配置【Hadoop配置、JDK配置和Flink配置】" >&2
+            return 1 # 失败
+        fi
+
+        # 4.2 拷贝正式配置文件 (使用 -f 强制覆盖)
+        cp -f "${official_conf_file_source}" "${official_conf_file_dest}"
+
+        if [ $? -eq 0 ]; then
+            echo "正式 'flink-conf.yaml' 拷贝成功。"
+            return 0 # 最终成功
+        else
+            echo "错误：拷贝正式配置文件 '${official_conf_file_source}' 失败。" >&2
+            return 1 # 失败
+        fi
+        # --- [拷贝正式配置结束] ---
+    fi
+}
+
+# --- [修改] 调用初始化函数 ---
+# 在 FLINK_CONF_DIR 定义后立即调用
+initialize_flink_config
+
+# 检查函数是否执行失败 (检查上一条命令的退出状态码 $?)
+if [ $? -ne 0 ]; then
+    echo "错误：Flink 配置初始化失败，脚本终止。" >&2
+    return 1
+fi
 
 # 创建任务运行日志目录
 # Create directory for job logs
