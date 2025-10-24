@@ -1,4 +1,4 @@
-#!/bin/bash
+flink-yarn-session-service-manager.sh#!/bin/bash
 
 # 自动获取 Flink 安装路径
 # Get Flink installation path automatically
@@ -246,6 +246,7 @@ get_config() {
 
     echo "$value"
 }
+
 #
 # 函数：修改 Flink 配置
 # Function: Modify a configuration in flink-conf.yaml
@@ -256,16 +257,21 @@ update_config() {
     local key=$1
     local value=$2
 
-    # 如果值不为空，则进行更新
-    # If the value is not empty, proceed with the update
     if [ -n "$value" ]; then
         # 删除已存在的配置行
-        # Delete the existing configuration line
         sed -i.bak "/^${key}:/d" "$CONF_FILE"
 
-        # 在文件末尾追加新的配置
-        # Append the new configuration to the end of the file
+        # 确保新配置在新行开始（关键修复）
+        if [ -s "$CONF_FILE" ]; then
+            # 检查文件末尾是否已有换行符
+            if [ "$(tail -c 1 "$CONF_FILE" 2>/dev/null)" != $'\n' ]; then
+                echo "" >> "$CONF_FILE"  # 添加缺失的换行符
+            fi
+        fi
+
+        # 追加新配置（确保在新行）
         echo "${key}: ${value}" >> "$CONF_FILE"
+
         echo "配置更新: ${key} 设置为 ${value}"
         echo "Configuration updated: ${key} set to ${value}"
     fi
